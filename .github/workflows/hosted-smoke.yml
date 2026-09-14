@@ -2,9 +2,6 @@ name: GitHub-hosted smoke test
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - .github/workflows/hosted-smoke.yml
 
 jobs:
   smoke:
