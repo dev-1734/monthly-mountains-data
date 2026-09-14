@@ -1,0 +1,46 @@
+name: GitHub-hosted smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/hosted-smoke.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate verification result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hosted-smoke"
+          python - <<'PY'
+          import json, os, platform
+          from datetime import datetime, timezone
+          result = {
+              "ok": True,
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "python": platform.python_version(),
+              "generated_at": datetime.now(timezone.utc).isoformat(),
+              "repository": os.environ.get("GITHUB_REPOSITORY"),
+              "sha": os.environ.get("GITHUB_SHA"),
+          }
+          path = os.path.join(os.environ["RUNNER_TEMP"], "hosted-smoke", "result.json")
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(result, f, ensure_ascii=False, indent=2)
+          print(json.dumps(result, ensure_ascii=False))
+          PY
+      - name: Upload verification result
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-hosted-smoke-result
+          path: ${{ runner.temp }}/hosted-smoke/result.json
+          if-no-files-found: error
