@@ -9,9 +9,6 @@ on:
     - cron: "20 */3 * * *"
       timezone: "Asia/Seoul"
   workflow_dispatch:
-  push:
-    paths:
-      - .github/workflows/forecast-weather.yml
 
 permissions:
   contents: write
