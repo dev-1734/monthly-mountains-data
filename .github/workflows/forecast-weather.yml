@@ -2,7 +2,8 @@ name: forecast-weather
 
 # 3시간마다 산별 날씨·대기질·특보를 받아 forecast/<id>.json 으로 배포한다.
 # 기상청 발표가 하루 8회(02·05·08·11·14·17·20·23시)라 그보다 자주 받을 이유가 없다.
-# 특별한 플랫폼 요구가 없으므로 공통 1402mac self-hosted runner에서 실행한다.
+# public repo에서 self-hosted runner를 쓰면 fork PR이 로컬 Mac에서 코드를 실행할 수 있어
+# 보안상 이 워크플로는 GitHub-hosted runner를 유지한다.
 
 on:
   schedule:
@@ -19,7 +20,7 @@ concurrency:
 
 jobs:
   collect:
-    runs-on: [self-hosted, macOS, ARM64, dev-mac]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
@@ -27,18 +28,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prepare runner-local Python
-        shell: bash
-        run: |
-          set -euo pipefail
-          command -v python3
-          python3 --version
-          venv="$RUNNER_TEMP/mountains-data-weather-venv"
-          rm -rf "$venv"
-          python3 -m venv "$venv"
-          "$venv/bin/python" -m pip install --upgrade pip
-          "$venv/bin/python" -m pip install -r requirements.txt
-          echo "$venv/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
 
       - name: 날씨·대기질·특보 수집
         id: collect
