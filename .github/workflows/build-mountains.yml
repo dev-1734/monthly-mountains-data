@@ -1,6 +1,7 @@
 name: build-mountains
 
 # 산 마스터 재빌드. 원천이 거의 안 바뀌므로 월 1회면 충분하다.
+# 특별한 플랫폼 요구가 없으므로 공통 1402mac self-hosted runner에서 실행한다.
 #  · 산림청 산정보(3,368개) → 이름·표고·소재지·설명
 #  · 전국등산로표준데이터(2,919건) → 코스·거리·소요시간·난이도
 #  · 100대명산 목록/POI, 전국주요봉우리 POI → 봉우리 표고
@@ -27,13 +28,11 @@ permissions:
 
 concurrency:
   group: build-mountains
-  cancel-in-progress: false   # 마스터 빌드는 중간에 끊지 않는다
+  cancel-in-progress: false
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    # 산 300개 × 관광공사 사진 조회. 사진이 없는 산은 유형을 푼 2차 검색까지 가므로
-    # 호출이 배로 늘어난다 — 실측 40분대. 여유를 두되 행(hang)은 잡히게 둔다.
+    runs-on: [self-hosted, macOS, ARM64, dev-mac]
     timeout-minutes: 75
 
     steps:
@@ -41,12 +40,18 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - run: pip install -r requirements.txt
+      - name: Prepare runner-local Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v python3
+          python3 --version
+          venv="$RUNNER_TEMP/mountains-data-build-venv"
+          rm -rf "$venv"
+          python3 -m venv "$venv"
+          "$venv/bin/python" -m pip install --upgrade pip
+          "$venv/bin/python" -m pip install -r requirements.txt
+          echo "$venv/bin" >> "$GITHUB_PATH"
 
       - name: 산 마스터 빌드
         env:
@@ -55,14 +60,9 @@ jobs:
         run: python pipeline/build_mountains.py
 
       - name: 검증
-        # 산 수·필수 필드·좌표·표고·코스 범위를 확인한다. 실패하면 커밋하지 않는다.
         run: python pipeline/validate.py data/v1/mountains.json
 
       - name: 혼잡도 산별 파라미터 확장
-        # 새로 들어온 산은 앱에서 폴백(baseIndex 45)으로 전부 같아진다 — 여기서 채운다.
-        # 5단계가 한쪽으로 쏠리면 종료 코드 1 이라 커밋되지 않는다.
-        # --refresh: 마스터가 바뀌면 서열도 바뀌므로 추정치를 다시 계산한다.
-        #            손입력(confidence high/medium)은 건드리지 않는다.
         run: python pipeline/build_crowd_params.py --refresh
 
       - name: 혼잡도 모델 검증
