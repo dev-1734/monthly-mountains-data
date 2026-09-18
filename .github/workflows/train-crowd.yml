@@ -1,10 +1,7 @@
 name: train-crowd
 
-# 혼잡도 모델 학습 (E안 — private 이 아니라 여기서 돈다).
-#
-# 여기서 도는 게 맞는 이유: 입력이 (a) 국립공원공단 실측 탐방객 통계 = 공공데이터,
-# (b) signals 레포가 push 한 정규화 지수 = 파생물 둘뿐이라 네이버 시크릿이 필요 없다.
-# public 레포는 Actions 분이 무제한이므로 private 예산에서 학습 비용이 빠진다.
+# 혼잡도 모델 학습. 특별한 플랫폼 요구가 없으므로 공통 1402mac self-hosted runner에서 실행한다.
+# 입력은 (a) 국립공원공단 실측 탐방객 통계와 (b) signals 레포가 push 한 정규화 지수다.
 
 on:
   schedule:
@@ -23,7 +20,7 @@ concurrency:
 
 jobs:
   train:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64, dev-mac]
     timeout-minutes: 25
 
     steps:
@@ -31,12 +28,18 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - run: pip install -r requirements.txt
+      - name: Prepare runner-local Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v python3
+          python3 --version
+          venv="$RUNNER_TEMP/mountains-data-train-venv"
+          rm -rf "$venv"
+          python3 -m venv "$venv"
+          "$venv/bin/python" -m pip install --upgrade pip
+          "$venv/bin/python" -m pip install -r requirements.txt
+          echo "$venv/bin" >> "$GITHUB_PATH"
 
       - name: 국립공원 실측 탐방객 통계 내려받기
         env:
@@ -44,7 +47,6 @@ jobs:
         run: python pipeline/fetch_visitor_stats.py
 
       - name: 학습 및 검증
-        # 홀드아웃 MAPE 가 임계치를 넘으면 종료 코드 1 → 기존 모델을 덮어쓰지 않는다.
         run: python pipeline/train_crowd.py --max-mape 0.45
 
       - name: 변경분 커밋
