@@ -1,7 +1,8 @@
 name: train-crowd
 
-# 혼잡도 모델 학습. 특별한 플랫폼 요구가 없으므로 공통 1402mac self-hosted runner에서 실행한다.
-# 입력은 (a) 국립공원공단 실측 탐방객 통계와 (b) signals 레포가 push 한 정규화 지수다.
+# 혼잡도 모델 학습.
+# public repo에서 self-hosted runner를 쓰면 fork PR이 로컬 Mac에서 코드를 실행할 수 있어
+# 보안상 이 워크플로는 GitHub-hosted runner를 유지한다.
 
 on:
   schedule:
@@ -20,7 +21,7 @@ concurrency:
 
 jobs:
   train:
-    runs-on: [self-hosted, macOS, ARM64, dev-mac]
+    runs-on: ubuntu-latest
     timeout-minutes: 25
 
     steps:
@@ -28,18 +29,12 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Prepare runner-local Python
-        shell: bash
-        run: |
-          set -euo pipefail
-          command -v python3
-          python3 --version
-          venv="$RUNNER_TEMP/mountains-data-train-venv"
-          rm -rf "$venv"
-          python3 -m venv "$venv"
-          "$venv/bin/python" -m pip install --upgrade pip
-          "$venv/bin/python" -m pip install -r requirements.txt
-          echo "$venv/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
 
       - name: 국립공원 실측 탐방객 통계 내려받기
         env:
