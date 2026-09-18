@@ -46,9 +46,12 @@ jobs:
 
       - name: 변경분 커밋
         run: |
+          set -euo pipefail
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/v1/crowd_model.json data/v1/manifest.json
           git diff --cached --quiet && echo "변경 없음" && exit 0
           git commit -m "crowd: 모델 재학습"
-          git push
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
