@@ -30,7 +30,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +48,49 @@ jobs:
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           MOUNTAIN_LIMIT: ${{ inputs.limit }}
-        run: python pipeline/build_mountains.py
+        run: |
+          set -euo pipefail
+
+          # limit 지정은 빠른 검증용이므로 한 번만 실행한다.
+          if [ -n "${MOUNTAIN_LIMIT:-}" ]; then
+            python pipeline/build_mountains.py
+            exit 0
+          fi
+
+          # 공공데이터포털의 일시적 ConnectTimeout 대응.
+          # 실패 회차가 만든 빈 API 캐시는 다음 시도에서 재사용하지 않는다.
+          for attempt in 1 2 3; do
+            echo "전체 빌드 시도 $attempt/3"
+            rm -rf data/raw/api_cache
+            set +e
+            python pipeline/build_mountains.py
+            rc=$?
+            set -e
+
+            count=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('data/v1/mountains.json')
+          if not p.exists():
+              print(0)
+          else:
+              try:
+                  print(len(json.loads(p.read_text()).get('mountains', [])))
+              except Exception:
+                  print(0)
+          PY
+          )
+            echo "시도 $attempt 결과: rc=$rc, 산 ${count}개"
+            if [ "$rc" -eq 0 ] && [ "$count" -ge 300 ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 20))
+            fi
+          done
+
+          echo "3회 시도 후에도 300개 전체 빌드에 실패했습니다. 배포하지 않습니다."
+          exit 1
 
       - name: 전체 빌드 개수 보호
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.limit == '' }}
@@ -81,6 +123,13 @@ jobs:
           git add data/v1/mountains.json data/v1/crowd_model.json data/v1/manifest.json
           git diff --cached --quiet && echo "변경 없음" && exit 0
           git commit -m "mountains: 마스터 재빌드"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((attempt * 2))
+          done
+          echo "동시 push 충돌이 3회 반복되어 중단합니다."
+          exit 1
