@@ -14,10 +14,15 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch final train-crowd verification
+      - name: Replace stale verification runs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh workflow run train-crowd.yml --repo "${{ github.repository }}"
-          echo "dispatched train-crowd"
+          repo="${{ github.repository }}"
+          gh api -X POST "repos/$repo/actions/runs/35413471727/cancel" >/dev/null 2>&1 || true
+          gh api -X POST "repos/$repo/actions/runs/35414209469/cancel" >/dev/null 2>&1 || true
+          sleep 3
+          gh workflow run build-mountains.yml --repo "$repo"
+          gh workflow run train-crowd.yml --repo "$repo"
+          echo "cancelled stale verification runs and dispatched latest build/train"
