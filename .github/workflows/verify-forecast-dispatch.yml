@@ -1,0 +1,23 @@
+name: verify-forecast-dispatch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/verify-forecast-dispatch.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch forecast verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run forecast-weather.yml --repo "${{ github.repository }}"
+          echo "dispatched forecast-weather"
