@@ -37,9 +37,10 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: 국립공원 실측 탐방객 통계 내려받기
+        id: visitors
         run: |
           set -euo pipefail
-          # www.data.go.kr 파일 서버가 간헐적으로 90초 ConnectTimeout을 내므로
+          # www.data.go.kr 파일 서버가 간헐적으로 ConnectTimeout을 내므로
           # 전체 다운로드를 새 연결로 최대 3회 다시 시도한다.
           for attempt in 1 2 3; do
             echo "탐방객 통계 다운로드 시도 $attempt/3"
@@ -48,19 +49,31 @@ jobs:
             rc=$?
             set -e
             if [ "$rc" -eq 0 ]; then
+              echo "fresh=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             if [ "$attempt" -lt 3 ]; then
               sleep $((attempt * 20))
             fi
           done
-          echo "3회 재시도 후에도 탐방객 통계 다운로드 실패"
-          exit 1
+
+          # 원천 파일 서버가 장시간 장애여도 마지막으로 검증된 모델은 계속 서비스한다.
+          # 신규 데이터가 없으므로 이 회차의 재학습만 생략하고 현재 모델을 검증한다.
+          echo "fresh=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::www.data.go.kr 연결 실패 — 신규 탐방객 통계를 받지 못해 이번 재학습을 생략합니다."
+          echo "### train-crowd: 신규 학습 생략" >> "$GITHUB_STEP_SUMMARY"
+          echo "www.data.go.kr 연결 실패로 기존 검증 모델을 유지합니다. 다음 정기 실행에서 다시 시도합니다." >> "$GITHUB_STEP_SUMMARY"
 
       - name: 학습 및 검증
+        if: steps.visitors.outputs.fresh == 'true'
         run: python pipeline/train_crowd.py --max-mape 0.45
 
+      - name: 기존 모델 안전성 검증
+        if: steps.visitors.outputs.fresh != 'true'
+        run: python pipeline/validate.py data/v1/crowd_model.json
+
       - name: 변경분 커밋
+        if: steps.visitors.outputs.fresh == 'true'
         run: |
           set -euo pipefail
           git config user.name  "github-actions[bot]"
