@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-18T23:22:37Z",
-  "mountains": 10,
+  "updatedAt": "2026-09-18T04:53:44Z",
+  "mountains": 300,
   "crowdModel": {
     "factorExponent": 1.0,
     "profiles": 29
