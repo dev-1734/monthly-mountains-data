@@ -14,10 +14,12 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch train-crowd verification
+      - name: Dispatch final remediation verification
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh workflow run train-crowd.yml --repo "${{ github.repository }}"
-          echo "dispatched train-crowd"
+          repo="${{ github.repository }}"
+          gh workflow run build-mountains.yml --repo "$repo"
+          gh workflow run train-crowd.yml --repo "$repo"
+          echo "dispatched build-mountains and train-crowd"
