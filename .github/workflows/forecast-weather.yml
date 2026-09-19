@@ -53,8 +53,8 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # 수집 결과를 보관한 뒤, 매 시도마다 최신 main 위에 다시 적용한다.
-          # 다른 workflow가 manifest.json을 먼저 갱신해도 rebase conflict가 나지 않게 한다.
+          # 수집 결과를 보관한 뒤 매 시도마다 최신 main 위에 다시 적용한다.
+          # 다른 workflow가 manifest.json을 먼저 갱신해도 rebase conflict가 나지 않는다.
           tmp="$(mktemp -d)"
           cp -R data/v1/forecast "$tmp/forecast"
           python - <<'PY' > "$tmp/forecast-manifest.json"
@@ -71,14 +71,14 @@ jobs:
             git reset --hard origin/main
             rm -rf data/v1/forecast
             cp -R "$tmp/forecast" data/v1/forecast
-            python - <<'PY'
+            PATCH_FILE="$tmp/forecast-manifest.json" python - <<'PY'
           import json
+          import os
           from pathlib import Path
           latest = Path('data/v1/manifest.json')
-          patch = Path("$tmp/forecast-manifest.json")
+          patch = Path(os.environ['PATCH_FILE'])
           m = json.loads(latest.read_text()) if latest.exists() else {'schemaVersion': 1}
-          p = json.loads(patch.read_text())
-          m.update(p)
+          m.update(json.loads(patch.read_text()))
           latest.write_text(json.dumps(m, ensure_ascii=False, indent=2) + '\n')
           PY
             git add data/v1/forecast data/v1/manifest.json
