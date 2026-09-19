@@ -52,15 +52,49 @@ jobs:
           set -euo pipefail
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/v1/forecast data/v1/manifest.json
-          if git diff --cached --quiet; then
-            echo "변경 없음"
-            exit 0
-          fi
-          git commit -m "forecast: $(date -u +%Y-%m-%dT%H:%MZ)"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+
+          # 수집 결과를 보관한 뒤, 매 시도마다 최신 main 위에 다시 적용한다.
+          # 다른 workflow가 manifest.json을 먼저 갱신해도 rebase conflict가 나지 않게 한다.
+          tmp="$(mktemp -d)"
+          cp -R data/v1/forecast "$tmp/forecast"
+          python - <<'PY' > "$tmp/forecast-manifest.json"
+          import json
+          from pathlib import Path
+          m = json.loads(Path('data/v1/manifest.json').read_text())
+          keep = {k: m[k] for k in ('forecast_count', 'forecastUpdatedAt') if k in m}
+          print(json.dumps(keep, ensure_ascii=False))
+          PY
+
+          for attempt in 1 2 3 4; do
+            echo "push 시도 $attempt/4"
+            git fetch origin main
+            git reset --hard origin/main
+            rm -rf data/v1/forecast
+            cp -R "$tmp/forecast" data/v1/forecast
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          latest = Path('data/v1/manifest.json')
+          patch = Path("$tmp/forecast-manifest.json")
+          m = json.loads(latest.read_text()) if latest.exists() else {'schemaVersion': 1}
+          p = json.loads(patch.read_text())
+          m.update(p)
+          latest.write_text(json.dumps(m, ensure_ascii=False, indent=2) + '\n')
+          PY
+            git add data/v1/forecast data/v1/manifest.json
+            if git diff --cached --quiet; then
+              echo "변경 없음"
+              exit 0
+            fi
+            git commit -m "forecast: $(date -u +%Y-%m-%dT%H:%MZ)"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "동시 push 감지 — 최신 main 위에 다시 적용합니다."
+            sleep $((attempt * 2))
+          done
+          echo "4회 재시도 후에도 push 실패"
+          exit 1
 
       - name: 중단된 회차는 빨간불로 남긴다
         if: steps.collect.outputs.rc == '3'
