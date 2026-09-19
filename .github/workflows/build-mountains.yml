@@ -3,12 +3,6 @@ name: build-mountains
 # 산 마스터 재빌드. 원천이 거의 안 바뀌므로 월 1회면 충분하다.
 # public repo에서 self-hosted runner를 쓰면 fork PR이 로컬 Mac에서 코드를 실행할 수 있어
 # 보안상 이 워크플로는 GitHub-hosted runner를 유지한다.
-#  · 산림청 산정보(3,368개) → 이름·표고·소재지·설명
-#  · 전국등산로표준데이터(2,919건) → 코스·거리·소요시간·난이도
-#  · 100대명산 목록/POI, 전국주요봉우리 POI → 봉우리 표고
-#  · 국립공원 공원경계 → parkType 판정
-#  · 국립공원 깃대종 → species
-#  · 기상청 단기예보 격자 변환
 
 on:
   schedule:
@@ -45,20 +39,21 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: 산 마스터 빌드
+        id: mountains
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           MOUNTAIN_LIMIT: ${{ inputs.limit }}
         run: |
           set -euo pipefail
 
-          # limit 지정은 빠른 검증용이므로 한 번만 실행한다.
           if [ -n "${MOUNTAIN_LIMIT:-}" ]; then
             python pipeline/build_mountains.py
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # 공공데이터포털의 일시적 ConnectTimeout 대응.
-          # 실패 회차가 만든 빈 API 캐시는 다음 시도에서 재사용하지 않는다.
+          # 일시적인 원천 API 장애에 최대 3회 재시도한다.
+          # 실패 회차의 빈/부분 캐시는 매번 버린다.
           for attempt in 1 2 3; do
             echo "전체 빌드 시도 $attempt/3"
             rm -rf data/raw/api_cache
@@ -66,31 +61,31 @@ jobs:
             python pipeline/build_mountains.py
             rc=$?
             set -e
-
             count=$(python - <<'PY'
           import json
           from pathlib import Path
           p = Path('data/v1/mountains.json')
-          if not p.exists():
+          try:
+              print(len(json.loads(p.read_text()).get('mountains', [])) if p.exists() else 0)
+          except Exception:
               print(0)
-          else:
-              try:
-                  print(len(json.loads(p.read_text()).get('mountains', [])))
-              except Exception:
-                  print(0)
           PY
           )
             echo "시도 $attempt 결과: rc=$rc, 산 ${count}개"
             if [ "$rc" -eq 0 ] && [ "$count" -ge 300 ]; then
+              echo "fresh=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            if [ "$attempt" -lt 3 ]; then
-              sleep $((attempt * 20))
-            fi
+            [ "$attempt" -eq 3 ] || sleep $((attempt * 20))
           done
 
-          echo "3회 시도 후에도 300개 전체 빌드에 실패했습니다. 배포하지 않습니다."
-          exit 1
+          # 포털 장기 장애가 서비스 데이터까지 망가뜨리지 않도록 checkout 시점의
+          # 마지막 검증된 300산을 복구하고 이번 갱신만 생략한다.
+          git checkout HEAD -- data/v1/mountains.json data/v1/manifest.json
+          echo "fresh=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::원천 API 장애로 신규 300산 빌드에 실패해 기존 검증 카탈로그를 유지합니다."
+          echo "### build-mountains: 신규 빌드 생략" >> "$GITHUB_STEP_SUMMARY"
+          echo "3회 재시도 후에도 원천 API가 응답하지 않아 기존 검증 300산을 유지합니다." >> "$GITHUB_STEP_SUMMARY"
 
       - name: 전체 빌드 개수 보호
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.limit == '' }}
@@ -100,22 +95,23 @@ jobs:
           from pathlib import Path
           data = json.loads(Path('data/v1/mountains.json').read_text())
           count = len(data.get('mountains', []))
-          print(f'전체 빌드 산 개수: {count}')
+          print(f'현재 서비스 산 개수: {count}')
           if count < 300:
-              raise SystemExit(f'전체 빌드가 300개 미만({count})입니다. 원천 API 장애 가능성이 있어 배포를 중단합니다.')
+              raise SystemExit(f'산 카탈로그가 300개 미만({count})입니다. 배포를 중단합니다.')
           PY
 
-      - name: 검증
+      - name: 산 데이터 검증
         run: python pipeline/validate.py data/v1/mountains.json
 
       - name: 혼잡도 산별 파라미터 확장
+        if: steps.mountains.outputs.fresh == 'true'
         run: python pipeline/build_crowd_params.py --refresh
 
       - name: 혼잡도 모델 검증
         run: python pipeline/validate.py data/v1/crowd_model.json
 
       - name: 변경분 커밋
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.limit == '' }}
+        if: ${{ steps.mountains.outputs.fresh == 'true' && (github.event_name != 'workflow_dispatch' || inputs.limit == '') }}
         run: |
           set -euo pipefail
           git config user.name  "github-actions[bot]"
