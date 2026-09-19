@@ -36,7 +36,8 @@ DOWNLOAD = "https://www.data.go.kr/cmm/cmm/fileDownload.do"
 FALLBACK_FILE_ID = "FILE_000000003643932"      # 2026-08-09 확인분
 
 UA = {"User-Agent": "Mozilla/5.0 (monthly-mountains data pipeline)"}
-TIMEOUT = 90
+# 연결 자체가 막힌 장애는 빨리 감지하고, 연결 후 파일 전송에는 충분한 시간을 준다.
+TIMEOUT = (15, 90)
 
 REQUIRED_COLUMNS = {"국립공원", "탐방지역", "일자", "전체 탐방객수"}
 MIN_ROWS = 10_000       # 8년 × 23개 탐방지역이면 5만 행대. 크게 모자라면 원본이 바뀐 것이다.
