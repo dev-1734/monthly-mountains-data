@@ -48,6 +48,7 @@ jobs:
           [ "$rc" = "0" ] || [ "$rc" = "3" ] || exit "$rc"
 
       - name: 변경분 커밋
+        if: steps.collect.outputs.rc == '0'
         run: |
           set -euo pipefail
           git config user.name  "github-actions[bot]"
@@ -96,9 +97,10 @@ jobs:
           echo "4회 재시도 후에도 push 실패"
           exit 1
 
-      - name: 중단된 회차는 빨간불로 남긴다
+      - name: 포털 장애 시 기존 정상 forecast 유지
         if: steps.collect.outputs.rc == '3'
         run: |
-          echo "포털 장애 또는 시간 초과로 이번 회차를 중간에 끊었습니다 — 받은 만큼은 커밋했습니다."
-          echo "3시간 뒤 회차가 이어받습니다. 계속 빨간불이면 공공데이터포털 상태를 확인하세요."
-          exit 1
+          echo "::warning::공공데이터포털 장애 또는 시간 초과로 이번 forecast 갱신을 생략합니다."
+          echo "부분 수집물은 배포하지 않고 기존 정상 forecast를 유지합니다. 다음 3시간 회차에서 다시 시도합니다."
+          echo "### forecast-weather: 기존 정상 데이터 유지" >> "$GITHUB_STEP_SUMMARY"
+          echo "공공데이터포털 장애/시간 초과로 이번 회차 갱신을 생략했습니다. 기존 forecast는 변경하지 않았습니다." >> "$GITHUB_STEP_SUMMARY"
