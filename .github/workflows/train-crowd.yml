@@ -56,9 +56,13 @@ jobs:
           echo "### train-crowd: 신규 학습 생략" >> "$GITHUB_STEP_SUMMARY"
           echo "운영 재학습은 private repo의 1402mac 경로에서 수행합니다." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 학습 및 검증
+      - name: 학습 결과를 런타임 모델에 반영·검증
         if: steps.visitors.outputs.fresh == 'true'
-        run: python pipeline/train_crowd.py --max-mape 0.45
+        run: |
+          set -euo pipefail
+          python pipeline/train_crowd.py --max-mape 0.45
+          python pipeline/apply_crowd_fit.py
+          python pipeline/validate.py data/v1/crowd_model.json
 
       - name: 기존 모델 안전성 검증
         if: steps.visitors.outputs.fresh != 'true'
