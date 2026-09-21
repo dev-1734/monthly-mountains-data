@@ -1,16 +1,12 @@
 name: train-crowd
 
-# 혼잡도 모델 학습.
-# public repo에서 self-hosted runner를 쓰면 fork PR이 로컬 Mac에서 코드를 실행할 수 있어
-# 보안상 이 워크플로는 GitHub-hosted runner를 유지한다.
+# 혼잡도 모델 학습의 운영 경로는 private monthly-mountains-signals의
+# data.go.kr local Mac collector(1402mac)로 이동했다.
+# public repo에서 self-hosted runner를 쓰지 않기 위해 이 workflow는
+# 수동 fallback/진단용 GitHub-hosted 경로로만 유지한다.
 
 on:
-  schedule:
-    - cron: "45 5 * * 0"
-      timezone: "Asia/Seoul"
   workflow_dispatch:
-  repository_dispatch:
-    types: [signals-updated]
 
 permissions:
   contents: write
@@ -40,8 +36,6 @@ jobs:
         id: visitors
         run: |
           set -euo pipefail
-          # www.data.go.kr 파일 서버가 간헐적으로 ConnectTimeout을 내므로
-          # 전체 다운로드를 새 연결로 최대 3회 다시 시도한다.
           for attempt in 1 2 3; do
             echo "탐방객 통계 다운로드 시도 $attempt/3"
             set +e
@@ -57,12 +51,10 @@ jobs:
             fi
           done
 
-          # 원천 파일 서버가 장시간 장애여도 마지막으로 검증된 모델은 계속 서비스한다.
-          # 신규 데이터가 없으므로 이 회차의 재학습만 생략하고 현재 모델을 검증한다.
           echo "fresh=false" >> "$GITHUB_OUTPUT"
-          echo "::warning::www.data.go.kr 연결 실패 — 신규 탐방객 통계를 받지 못해 이번 재학습을 생략합니다."
+          echo "::warning::GitHub-hosted runner에서 www.data.go.kr 연결 실패 — 기존 검증 모델을 유지합니다."
           echo "### train-crowd: 신규 학습 생략" >> "$GITHUB_STEP_SUMMARY"
-          echo "www.data.go.kr 연결 실패로 기존 검증 모델을 유지합니다. 다음 정기 실행에서 다시 시도합니다." >> "$GITHUB_STEP_SUMMARY"
+          echo "운영 재학습은 private repo의 1402mac 경로에서 수행합니다." >> "$GITHUB_STEP_SUMMARY"
 
       - name: 학습 및 검증
         if: steps.visitors.outputs.fresh == 'true'
