@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-04T08:44:48+09:00",
+  "updatedAt": "2026-10-05T05:40:31+09:00",
   "count": 299,
   "note": "네이버 원본은 포함하지 않는다. 정규화된 파생 지수만 배포한다.",
   "mountains": [
@@ -138,7 +138,6 @@
     "hamjisan",
     "hanseoksan",
     "hanusan",
-    "haseosan",
     "hoamsan",
     "hoeumsan",
     "hogusan",
@@ -175,6 +174,7 @@
     "jieoksan",
     "jinjosan",
     "jirisan",
+    "jirisantongyeong",
     "jogyesan",
     "jongnamsan",
     "joryeongsan",
